@@ -34,8 +34,7 @@
   [m]
   (with-resource [z (zk/connect (get m "zookeeper.connect"))]
     zk/close
-    (-> (zk/data z "/controller")
-        :data
+    (-> ^bytes (:data (zk/data z "/controller"))
         String.
         controller-broker-id)))
 
@@ -51,8 +50,7 @@
   [m topic]
   (with-resource [z (zk/connect (get m "zookeeper.connect"))]
     zk/close
-    (-> (zk/data z (str "/brokers/topics/" topic))
-        :data
+    (-> ^bytes (:data (zk/data z (str "/brokers/topics/" topic)))
         String.
         read-str
         (get "partitions"))))
@@ -65,8 +63,7 @@
   [m consumer-group topic partition]
   (with-resource [z (zk/connect (get m "zookeeper.connect"))]
     zk/close
-    (try (-> (zk/data z (offset-path consumer-group topic partition))
-             :data
+    (try (-> ^bytes (:data (zk/data z (offset-path consumer-group topic partition)))
              (String. )
              (Long/valueOf))
          (catch KeeperException$NoNodeException e

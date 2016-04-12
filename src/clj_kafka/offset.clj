@@ -5,6 +5,7 @@
             [clj-kafka.consumer.simple :refer [topic-offset consumer]]
             [clj-kafka.zk :refer [partitions]])
   (:import [kafka.common TopicAndPartition OffsetAndMetadata]
+           [kafka.cluster Broker]
            [kafka.javaapi OffsetFetchResponse ConsumerMetadataResponse OffsetCommitResponse]
            (kafka.network BlockingChannel)
            (kafka.api RequestOrResponse ConsumerMetadataRequest OffsetFetchRequest OffsetCommitRequest TopicMetadataRequest)
@@ -14,13 +15,13 @@
 (def DEFAULT_CLIENT_ID "clj-kafka-id")
 
 (defn- parse-int [s]
-  (Integer. (re-find  #"\d+" s )))
+  (Integer. ^String (re-find  #"\d+" s )))
 
-(defn- get-first-broker-config [broker-config]
-  (let [first-broker (nth (.split broker-config ",") 0)]
+(defn- get-first-broker-config [^String broker-config]
+  (let [first-broker ^String (first (.split broker-config ","))]
       (.split first-broker ":" 2)))
 
-(defn- blocking-channel
+(defn- ^BlockingChannel blocking-channel
   "Create a new blocking channel to the Kafka cluster.
   host is the broker server name or IP
   port is the broker server port"
@@ -46,7 +47,7 @@
 
 (defn- find-topic-partition-count [zk-config topic]
   (let [topic-partitions (partitions zk-config  topic)]
-      (.count topic-partitions)))
+      (count topic-partitions)))
 
 (defn- topic-metadata-request
   ([topic] (topic-metadata-request topic 1 DEFAULT_CLIENT_ID))
@@ -72,7 +73,9 @@
         correlation-id 1
         now (System/currentTimeMillis)
         topic-partition-java (map (fn [i] (TopicAndPartition. topic i)) (range 0 (count new-offsets)))
-        topic-partition-offsets (java.util.HashMap. (into {} (for [tp topic-partition-java] [tp (OffsetAndMetadata. (nth new-offsets (.partition tp)) "" now)])))
+        topic-partition-offsets ((fn [^java.util.Map m]
+                                   (java.util.HashMap. m)) (into {} (for [^TopicAndPartition tp topic-partition-java]
+                                                                    [tp (OffsetAndMetadata. (nth new-offsets (.partition tp)) "" now)])))
         emptyMap (JavaConversions/mapAsScalaMap topic-partition-offsets)
         topic-partition-offsets-scala (.$plus$plus (scala.collection.immutable.HashMap.) emptyMap)
         ]
@@ -85,13 +88,13 @@
         consumer (consumer bk-host bk-port DEFAULT_CLIENT_ID)]
     (topic-offset consumer topic partition new-offset-type)))
 
-(defn- fecth-topic-offset [broker-config topic partition new-offset-type]
+(defn- fecth-topic-offset [^String broker-config topic partition new-offset-type]
   (let [brokers (.split broker-config ",")
         potential-offsets (map (fn [single-broker] (try-fecth-topic-offset single-broker topic partition new-offset-type)) brokers)]
     (first (filter #(not (nil? %)) potential-offsets))
     ))
 
-(defn- find-offset-manager
+(defn- ^BlockingChannel find-offset-manager
   ([broker-config group-id] (find-offset-manager broker-config group-id DEFAULT_CLIENT_ID))
   ([broker-config group-id client-id]
   (let [host-port-pair (get-first-broker-config broker-config)
@@ -102,9 +105,10 @@
         (send-channel-message channel-attempt metadata-req)
         (let [meta-response (to-clojure (ConsumerMetadataResponse/readFrom (.buffer (.receive channel-attempt))))]
           (if-let [no-error (= (kafka.common.ErrorMapping/NoError) (:error-code meta-response))]
-            (if-let [same-channel (and (= host (.host (:coordinator meta-response))) (= port (.port (:coordinator meta-response))))]
+            (if-let [same-channel (and (= host (.host ^Broker (:coordinator meta-response)))
+                                       (= port (.port ^Broker (:coordinator meta-response))))]
               channel-attempt
-              (let [coordinator (:coordinator meta-response)
+              (let [coordinator ^Broker (:coordinator meta-response)
                          new-host (.host coordinator) new-port (.port coordinator)]
                      (.disconnect channel-attempt)
                      (blocking-channel new-host new-port)))

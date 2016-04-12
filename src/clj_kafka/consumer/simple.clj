@@ -20,8 +20,8 @@
   (.build (doto (FetchRequestBuilder. )
             (.clientId client-id)
             (.addFetch topic (Integer/valueOf partition) offset fetch-size)
-            (#(when max-wait (.maxWait % max-wait)))
-            (#(when min-bytes (.minBytes % min-bytes))))))
+            (#(when max-wait (.maxWait ^FetchRequestBuilder % max-wait)))
+            (#(when min-bytes (.minBytes ^FetchRequestBuilder % min-bytes))))))
 
 (defn messages
   [^SimpleConsumer consumer client-id topic partition offset fetch-size & more]
@@ -30,14 +30,14 @@
                                                           topic
                                                           partition))))))
 
-(defn topic-meta-data [consumer topics]
+(defn topic-meta-data [^SimpleConsumer consumer topics]
   (to-clojure (.send consumer (TopicMetadataRequest. topics))))
 
-(defn topic-offset [consumer topic partition offset-position]
+(defn topic-offset [^SimpleConsumer consumer topic partition offset-position]
   (let [op   {:latest -1 :earliest -2}
         tp   (TopicAndPartition. topic partition)
         pori (PartitionOffsetRequestInfo. (offset-position op) 1)
-        hm    (java.util.HashMap. {tp pori})]
+        hm   ((fn [^java.util.Map m] (java.util.HashMap. m)) {tp pori})]  ;; Warns of reflection without the helper function
     (let [response  (.getOffsetsBefore consumer (OffsetRequest. hm (kafka.api.OffsetRequest/CurrentVersion) "clj-kafka-id"))]
       (first (.offsets response topic partition)))))
 
